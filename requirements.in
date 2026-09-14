@@ -1,4 +1,6 @@
 datasets
+deep_translator
 pandas
 stanza
-deep_translator
+torch
+transformers
