@@ -1,7 +1,7 @@
 import os
 import stanza
 import pandas as pd
-from data import load_data, DATA_PATH
+from src.data import load_data, DATA_PATH
 
 LANGUAGES_TO_TOKENISE = ["ar", "ko", "te"]
 
@@ -60,7 +60,3 @@ def tokenise_train_and_val():
         os.path.join(DATA_PATH, "validation_tokenised.parquet"), index=False
     )
     return df_train_tokenised, df_val_tokenised
-
-
-if __name__ == "__main__":
-    tokenise_train_and_val()

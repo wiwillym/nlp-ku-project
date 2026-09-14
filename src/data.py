@@ -47,7 +47,3 @@ def load_tokenised_data():
         raise FileNotFoundError("Tokenised data not found.")
 
     return df_train_tokenised, df_val_tokenised
-
-
-if __name__ == "__main__":
-    df_train, df_val = load_data()
