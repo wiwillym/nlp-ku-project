@@ -27,6 +27,8 @@ charset-normalizer==3.5.1
     # via requests
 click==8.5.0
     # via huggingface-hub
+cloudpickle==3.1.2
+    # via joblib
 colorama==0.4.6
     # via udapi
 datasets==5.0.1
@@ -77,6 +79,8 @@ idna==3.19
     #   yarl
 jinja2==3.1.6
     # via torch
+joblib==1.6.0
+    # via scikit-learn
 markdown-it-py==4.2.0
     # via rich
 markupsafe==3.0.3
@@ -91,6 +95,8 @@ multidict==6.8.0
     #   yarl
 multiprocess==0.70.19
     # via datasets
+narwhals==2.26.0
+    # via scikit-learn
 networkx==3.6.1
     # via
     #   stanza
@@ -99,6 +105,8 @@ numpy==2.5.3
     # via
     #   datasets
     #   pandas
+    #   scikit-learn
+    #   scipy
     #   stanza
     #   transformers
 packaging==26.3
@@ -142,6 +150,10 @@ rich==15.0.0
     # via typer
 safetensors==0.8.0
     # via transformers
+scikit-learn==1.9.1
+    # via -r requirements.in
+scipy==1.18.1
+    # via scikit-learn
 shellingham==1.5.4
     # via typer
 six==1.17.0
@@ -154,6 +166,8 @@ sympy==1.14.0
     # via torch
 termcolor==3.3.0
     # via udapi
+threadpoolctl==3.7.0
+    # via scikit-learn
 tokenizers==0.23.2
     # via transformers
 torch==2.14.0

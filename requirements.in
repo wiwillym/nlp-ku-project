@@ -1,6 +1,7 @@
 datasets
 deep_translator
 pandas
+scikit-learn
 stanza
 torch
 transformers
