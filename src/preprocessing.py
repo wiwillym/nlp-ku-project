@@ -18,35 +18,55 @@ tokenisers = {
 def tokenise(text, lang):
     doc = tokenisers[lang](text)
 
-    return [token.text for sentence in doc.sentences for token in sentence.tokens]
+    tokens = []
+    offsets = []
+
+    for sentence in doc.sentences:
+        for token in sentence.tokens:
+            tokens.append(token.text)
+            offsets.append((token.start_char, token.end_char))
+
+    return tokens, offsets
 
 
 def tokenise_context_and_answer(context, answer, lang):
-    context_tokens = tokenise(context, lang)
-    answer_tokens = tokenise(answer, lang)
-    return context_tokens, answer_tokens
+    context_tokens, context_offsets = tokenise(context, lang)
+    answer_tokens, _ = tokenise(answer, lang)
+    return context_tokens, context_offsets, answer_tokens
 
 
 def tokenise_dataset(df):
     df = df[df["lang"].isin(LANGUAGES_TO_TOKENISE)]
     tokenised_datasets = []
+
     for lang in LANGUAGES_TO_TOKENISE:
         print(f"Tokenising {lang} dataset...")
-        sub_df_by_lang = df[df["lang"] == lang]
-        sub_df_by_lang["context_tokens"], sub_df_by_lang["answer_tokens"] = zip(
+
+        sub_df_by_lang = df[df["lang"] == lang].copy()
+
+        (
+            sub_df_by_lang["context_tokens"],
+            sub_df_by_lang["context_offsets"],
+            sub_df_by_lang["answer_tokens"],
+        ) = zip(
             *sub_df_by_lang.apply(
                 lambda row: tokenise_context_and_answer(
-                    row["context"], row["answer"], "en"
+                    row["context"],
+                    row["answer"],
+                    "en",
                 ),
                 axis=1,
             )
         )
-        sub_df_by_lang["question_tokens"] = sub_df_by_lang["question"].apply(
-            lambda x: tokenise(x, lang)
-        )
+
+        (
+            sub_df_by_lang["question_tokens"],
+            sub_df_by_lang["question_offsets"],
+        ) = zip(*sub_df_by_lang["question"].apply(lambda x: tokenise(x, lang)))
+
         tokenised_datasets.append(sub_df_by_lang)
-    df = pd.concat(tokenised_datasets, ignore_index=True)
-    return df
+
+    return pd.concat(tokenised_datasets, ignore_index=True)
 
 
 def tokenise_train_and_val():
