@@ -26,7 +26,7 @@ Usage sketch:
     train_unk = [apply_unk(toks, vocab) for toks in ar_train]
     val_unk   = [apply_unk(toks, vocab) for toks in ar_val]
 
-    model = UnigramLM(k=1.0)          # k=1.0 is Laplace smoothing; tune k on val if you like
+    model = UnigramLM(k=<value>)
     model.fit(train_unk, vocab)
     ppl = model.perplexity(val_unk)
     print("Unigram val perplexity:", ppl)
@@ -80,8 +80,8 @@ def add_boundaries(tokens, order=1):
 
 class UnigramLM:
     """
-    Unigram language model with add-k smoothing (k=1.0 -> Laplace smoothing).
-    This ignores all context — it's the REQUIRED baseline for the group.
+    Unigram language model with add-k smoothing.
+    This ignores all context. it's the REQUIRED baseline for the group.
     """
 
     def __init__(self, k: float = 1.0):
@@ -120,25 +120,3 @@ class UnigramLM:
             total_tokens += len(tokens)
         avg_neg_logprob = -total_logprob / total_tokens
         return math.exp(avg_neg_logprob)
-
-
-if __name__ == "__main__":
-    
-    fake_train = [
-        ["what", "is", "the", "capital"],
-        ["who", "is", "the", "president"],
-        ["what", "is", "your", "name"],
-    ]
-    fake_val = [
-        ["what", "is", "the", "name"],
-        ["who", "is", "your", "friend"],
-    ]
-
-    vocab = build_vocab(fake_train, min_count=1)
-    train_unk = [apply_unk(t, vocab) for t in fake_train]
-    val_unk = [apply_unk(t, vocab) for t in fake_val]
-
-    model = UnigramLM(k=1.0)
-    model.fit(train_unk, vocab)
-    print("Vocab size:", len(vocab))
-    print("Validation perplexity:", model.perplexity(val_unk))
