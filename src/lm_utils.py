@@ -38,7 +38,8 @@ import math
 UNK = "<UNK>"
 BOS = "<s>"
 EOS = "</s>"
-MIN_COUNT = 2  
+MIN_COUNT = 2
+
 
 def build_vocab(token_lists, min_count=MIN_COUNT):
     """
@@ -119,4 +120,58 @@ class UnigramLM:
             total_logprob += self.sentence_logprob(tokens)
             total_tokens += len(tokens)
         avg_neg_logprob = -total_logprob / total_tokens
+        return math.exp(avg_neg_logprob)
+
+
+class BigramLM:
+
+    def __init__(self, k=1.0):
+        self.k = k
+        self.bigram_counts = Counter()
+        self.context_counts = Counter()
+        self.vocab = None
+
+    def fit(self, token_lists, vocab):
+        self.vocab = vocab
+        self.bigram_counts = Counter()
+        self.context_counts = Counter()
+
+        for tokens in token_lists:
+
+            sequence = [BOS] + list(tokens)
+
+            for prev, word in zip(sequence[:-1], sequence[1:]):
+                self.bigram_counts[(prev, word)] += 1
+                self.context_counts[prev] += 1
+
+    def prob(self, word, prev):
+        V = len(self.vocab)
+
+        numerator = self.bigram_counts[(prev, word)] + self.k
+
+        denominator = self.context_counts[prev] + self.k * V
+
+        return numerator / denominator
+
+    def sentence_logprob(self, tokens):
+        sequence = [BOS] + list(tokens)
+
+        logprob = 0.0
+
+        for prev, word in zip(sequence[:-1], sequence[1:]):
+            logprob += math.log(self.prob(word, prev))
+
+        return logprob
+
+    def perplexity(self, token_lists):
+        total_logprob = 0.0
+        total_tokens = 0
+
+        for tokens in token_lists:
+            total_logprob += self.sentence_logprob(tokens)
+
+            total_tokens += len(tokens)
+
+        avg_neg_logprob = -total_logprob / total_tokens
+
         return math.exp(avg_neg_logprob)
