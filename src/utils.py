@@ -36,21 +36,14 @@ def get_most_common_tokens(df, translator, n=5):
     return pd.DataFrame(rows)
 
 
-def build_vocabulary(df):
-    counter = Counter()
-    for tokens in df["context_tokens"]:
-        counter.update(token.lower() for token in tokens)
+def split_by_lengths(values, lengths):
+    sequences = []
+    offset = 0
 
-    for tokens in df["question_tokens"]:
-        counter.update(token.lower() for token in tokens)
+    for length in lengths:
+        sequences.append(list(values[offset : offset + length]))
+        offset += length
 
-    vocabulary = {
-        PAD_TOKEN: 0,
-        UNK_TOKEN: 1,
-    }
+    assert offset == len(values)
 
-    for token, count in counter.items():
-        if count >= 10:
-            vocabulary[token] = len(vocabulary)
-
-    return vocabulary
+    return sequences
