@@ -176,55 +176,58 @@ class BigramLM:
 
         return math.exp(avg_neg_logprob)
 
+
 class TrigramLM:
 
     def __init__(self, k=1.0):
-            self.k = k
-            self.trigram_counts = Counter()
-            self.context_counts = Counter()
-            self.vocab = None
-    
+        self.k = k
+        self.trigram_counts = Counter()
+        self.context_counts = Counter()
+        self.vocab = None
+
     def fit(self, token_lists, vocab):
-            self.vocab = vocab
-            self.trigram_counts = Counter()
-            self.context_counts = Counter()
-    
-            for tokens in token_lists:
-    
-                sequence = [BOS, BOS] + list(tokens)
-    
-                for prev_prev, prev, word in zip(sequence[:-2], sequence[1:-1], sequence[2:]):
-                    self.trigram_counts[(prev_prev, prev, word)] += 1
-                    self.context_counts[(prev_prev, prev)] += 1
-    
-    def prob(self, word, prev_prev, prev):
-            V = len(self.vocab)
-    
-            numerator = self.trigram_counts[(prev_prev, prev, word)] + self.k
-    
-            denominator = self.context_counts[(prev_prev, prev)] + self.k * V
-    
-            return numerator / denominator
-    
-    def sentence_logprob(self, tokens):
+        self.vocab = vocab
+        self.trigram_counts = Counter()
+        self.context_counts = Counter()
+
+        for tokens in token_lists:
+
             sequence = [BOS, BOS] + list(tokens)
-    
-            logprob = 0.0
-    
-            for prev_prev, prev, word in zip(sequence[:-2], sequence[1:-1], sequence[2:]):
-                logprob += math.log(self.prob(word, prev_prev, prev))
-    
-            return logprob
-    
+
+            for prev_prev, prev, word in zip(
+                sequence[:-2], sequence[1:-1], sequence[2:]
+            ):
+                self.trigram_counts[(prev_prev, prev, word)] += 1
+                self.context_counts[(prev_prev, prev)] += 1
+
+    def prob(self, word, prev_prev, prev):
+        V = len(self.vocab)
+
+        numerator = self.trigram_counts[(prev_prev, prev, word)] + self.k
+
+        denominator = self.context_counts[(prev_prev, prev)] + self.k * V
+
+        return numerator / denominator
+
+    def sentence_logprob(self, tokens):
+        sequence = [BOS, BOS] + list(tokens)
+
+        logprob = 0.0
+
+        for prev_prev, prev, word in zip(sequence[:-2], sequence[1:-1], sequence[2:]):
+            logprob += math.log(self.prob(word, prev_prev, prev))
+
+        return logprob
+
     def perplexity(self, token_lists):
-           total_logprob = 0.0
-           total_tokens = 0
-   
-           for tokens in token_lists:
-               total_logprob += self.sentence_logprob(tokens)
-   
-               total_tokens += len(tokens)
-   
-           avg_neg_logprob = -total_logprob / total_tokens
-   
-           return math.exp(avg_neg_logprob)
+        total_logprob = 0.0
+        total_tokens = 0
+
+        for tokens in token_lists:
+            total_logprob += self.sentence_logprob(tokens)
+
+            total_tokens += len(tokens)
+
+        avg_neg_logprob = -total_logprob / total_tokens
+
+        return math.exp(avg_neg_logprob)
