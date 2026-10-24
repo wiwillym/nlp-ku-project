@@ -16,8 +16,6 @@ anyio==4.15.1
     # via httpx
 attrs==26.1.0
     # via aiohttp
-beautifulsoup4==4.15.0
-    # via deep-translator
 certifi==2026.7.22
     # via
     #   httpcore
@@ -32,15 +30,18 @@ cloudpickle==3.1.2
 colorama==0.4.6
     # via udapi
 datasets==5.0.1
-    # via -r requirements.in
-deep-translator==1.11.4
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   evaluate
 dill==0.4.1
     # via
     #   datasets
+    #   evaluate
     #   multiprocess
 emoji==2.15.0
     # via stanza
+evaluate==0.4.6
+    # via -r requirements.in
 filelock==3.32.6
     # via
     #   datasets
@@ -53,6 +54,7 @@ frozenlist==1.8.0
 fsspec[http]==2026.6.0
     # via
     #   datasets
+    #   evaluate
     #   huggingface-hub
     #   torch
 h11==0.16.0
@@ -68,6 +70,7 @@ httpx==0.28.1
 huggingface-hub==1.31.0
     # via
     #   datasets
+    #   evaluate
     #   stanza
     #   tokenizers
     #   transformers
@@ -94,16 +97,20 @@ multidict==6.8.0
     #   aiohttp
     #   yarl
 multiprocess==0.70.19
-    # via datasets
+    # via
+    #   datasets
+    #   evaluate
 narwhals==2.26.0
     # via scikit-learn
 networkx==3.6.1
     # via
     #   stanza
     #   torch
-numpy==2.5.3
+numpy==2.5.4
     # via
+    #   -r requirements.in
     #   datasets
+    #   evaluate
     #   pandas
     #   scikit-learn
     #   scipy
@@ -112,12 +119,14 @@ numpy==2.5.3
 packaging==26.3
     # via
     #   datasets
+    #   evaluate
     #   huggingface-hub
     #   transformers
-pandas==3.0.5
+pandas==3.1.0
     # via
     #   -r requirements.in
     #   datasets
+    #   evaluate
 platformdirs==4.11.8
     # via stanza
 propcache==0.5.2
@@ -144,7 +153,7 @@ regex==2026.9.10
 requests==2.34.2
     # via
     #   datasets
-    #   deep-translator
+    #   evaluate
     #   stanza
 rich==15.0.0
     # via typer
@@ -158,8 +167,6 @@ shellingham==1.5.4
     # via typer
 six==1.17.0
     # via python-dateutil
-soupsieve==2.9.2
-    # via beautifulsoup4
 stanza==1.14.0
     # via -r requirements.in
 sympy==1.14.0
@@ -170,13 +177,15 @@ threadpoolctl==3.7.0
     # via scikit-learn
 tokenizers==0.23.2
     # via transformers
-torch==2.14.0
+torch==2.14.1
     # via
     #   -r requirements.in
     #   stanza
 tqdm==4.70.1
     # via
+    #   -r requirements.in
     #   datasets
+    #   evaluate
     #   huggingface-hub
     #   stanza
     #   transformers
@@ -189,7 +198,6 @@ typing-extensions==4.16.0
     #   aiohttp
     #   aiosignal
     #   anyio
-    #   beautifulsoup4
     #   huggingface-hub
     #   torch
 udapi==0.5.2
@@ -199,7 +207,9 @@ udtools==0.2.8
 urllib3==2.7.0
     # via requests
 xxhash==4.0.1
-    # via datasets
+    # via
+    #   datasets
+    #   evaluate
 yarl==1.24.5
     # via aiohttp
 
