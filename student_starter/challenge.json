@@ -1,0 +1,123 @@
+
+[
+  {
+    "id": "rapa-nui-answerable",
+    "pair_id": "rapa-nui",
+    "created_by": "Guillermo Martinez",
+    "question": "ما الاسم الأصلي لجزيرة الفصح؟",
+    "context": "Rapa Nui, the indigenous name of Easter Island, bears witness to a unique cultural phenomenon.",
+    "lang": "ar",
+    "answerable": true,
+    "answer_start": 0,
+    "answer": "Rapa Nui",
+    "source_url": "https://whc.unesco.org/en/list/715/"
+  },
+  {
+    "id": "rapa-nui-unanswerable",
+    "pair_id": "rapa-nui",
+    "created_by": "Guillermo Martinez",
+    "question": "ما الاسم الإسباني لجزيرة الفصح؟",
+    "context": "Rapa Nui, the indigenous name of Easter Island, bears witness to a unique cultural phenomenon.",
+    "lang": "ar",
+    "answerable": false,
+    "answer_start": -1,
+    "answer": "",
+    "source_url": "https://whc.unesco.org/en/list/715/"
+  },
+  {
+    "id": "chinchorro-answerable",
+    "pair_id": "chinchorro",
+    "created_by": "Guillermo Martinez",
+    "question": "가장 오래된 인공 미라로 유명한 문화는 무엇인가요?",
+    "context": "Archaeological sites associated with the Chinchorro culture are recognized for having the oldest known artificially mummified human bodies.",
+    "lang": "ko",
+    "answerable": true,
+    "answer_start": 41,
+    "answer": "Chinchorro",
+    "source_url": "https://whc.unesco.org/en/list/1634/"
+  },
+  {
+    "id": "chinchorro-unanswerable",
+    "pair_id": "chinchorro",
+    "created_by": "Guillermo Martinez",
+    "question": "가장 오래된 자연 미라로 유명한 문화는 무엇인가요?",
+    "context": "Archaeological sites associated with the Chinchorro culture are recognized for having the oldest known artificially mummified human bodies.",
+    "lang": "ko",
+    "answerable": false,
+    "answer_start": -1,
+    "answer": "",
+    "source_url": "https://whc.unesco.org/en/list/1634/"
+  },
+  {
+    "id": "alma-answerable",
+    "pair_id": "alma",
+    "created_by": "Guillermo Martinez",
+    "question": "ALMA యాంటెన్నాల మధ్య గరిష్ఠ దూరం ఎంత?",
+    "context": "ALMA comprises 66 high-precision antennas, spread over distances of up to 16 kilometres.",
+    "lang": "te",
+    "answerable": true,
+    "answer_start": 74,
+    "answer": "16 kilometres",
+    "source_url": "https://www.eso.org/public/chile/teles-instr/alma/?lang=en"
+  },
+  {
+    "id": "alma-unanswerable",
+    "pair_id": "alma",
+    "created_by": "Guillermo Martinez",
+    "question": "ALMA యాంటెన్నాల మధ్య కనిష్ఠ దూరం ఎంత?",
+    "context": "ALMA comprises 66 high-precision antennas, spread over distances of up to 16 kilometres.",
+    "lang": "te",
+    "answerable": false,
+    "answer_start": -1,
+    "answer": "",
+    "source_url": "https://www.eso.org/public/chile/teles-instr/alma/?lang=en"
+  },
+  {
+    "id": "chiloe-answerable",
+    "pair_id": "chiloe",
+    "created_by": "Guillermo Martinez",
+    "question": "ما اسم الحصن التاريخي الذي يمكن زيارته في أنكود بجزيرة تشيلوي؟",
+    "context": "Ancud and Castro are the most important cities of Chiloé. In Ancud you can visit the historic Fort San Antonio",
+    "lang": "ar",
+    "answerable": true,
+    "answer_start": 94,
+    "answer": "Fort San Antonio",
+    "source_url": "https://chile.travel/en/attractions/ancud-and-castro/"
+  },
+  {
+    "id": "chiloe-unanswerable",
+    "pair_id": "chiloe",
+    "created_by": "Guillermo Martinez",
+    "question": "ما اسم الحصن التاريخي الذي يمكن زيارته في كاسترو بجزيرة تشيلوي؟",
+    "context": "Ancud and Castro are the most important cities of Chiloé. In Ancud you can visit the historic Fort San Antonio",
+    "lang": "ar",
+    "answerable": false,
+    "answer_start": -1,
+    "answer": "",
+    "source_url": "https://chile.travel/en/attractions/ancud-and-castro/"
+  },
+  {
+    "id": "uyuni-answerable",
+    "pair_id": "uyuni",
+    "created_by": "Guillermo Martinez",
+    "question": "세계에서 가장 큰 소금 평원의 이름은 무엇인가요?",
+    "context": "The largest salar (salt flat) in the world, Salar de Uyuni, is located within the Altiplano of Bolivia in South America.",
+    "lang": "ko",
+    "answerable": true,
+    "answer_start": 44,
+    "answer": "Salar de Uyuni",
+    "source_url": "https://science.nasa.gov/earth/earth-observatory/salar-de-uyuni-bolivia-6096/"
+  },
+  {
+    "id": "uyuni-unanswerable",
+    "pair_id": "uyuni",
+    "created_by": "Guillermo Martinez",
+    "question": "세계에서 두 번째로 큰 소금 평원의 이름은 무엇인가요?",
+    "context": "The largest salar (salt flat) in the world, Salar de Uyuni, is located within the Altiplano of Bolivia in South America.",
+    "lang": "ko",
+    "answerable": false,
+    "answer_start": -1,
+    "answer": "",
+    "source_url": "https://science.nasa.gov/earth/earth-observatory/salar-de-uyuni-bolivia-6096/"
+  }
+]

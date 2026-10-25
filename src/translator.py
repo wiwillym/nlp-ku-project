@@ -1,4 +1,5 @@
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 MODEL_NAME = "facebook/nllb-200-distilled-1.3B"
@@ -34,26 +35,42 @@ class NLLBTranslator:
         self.model.to(self.device)
         self.model.eval()
 
-    def translate(self, text, source_lang):
-
-        text = str(text).strip()
+    def translate_batch(self, texts, source_lang, batch_size=8):
         self.tokenizer.src_lang = LANGUAGE_MAP[source_lang]
+        translations = []
 
-        inputs = self.tokenizer(
-            text,
-            return_tensors="pt",
-        ).to(self.device)
+        for start in tqdm(
+            range(0, len(texts), batch_size),
+            desc=f"Translating {source_lang}",
+        ):
+            batch = texts[start : start + batch_size]
 
-        with torch.inference_mode():
-            output = self.model.generate(
-                **inputs,
-                forced_bos_token_id=self.tokenizer.convert_tokens_to_ids("eng_Latn"),
-                max_length=20,
+            inputs = self.tokenizer(
+                [str(text).strip() for text in batch],
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=128,
+            ).to(self.device)
+
+            with torch.inference_mode():
+                outputs = self.model.generate(
+                    **inputs,
+                    forced_bos_token_id=self.tokenizer.convert_tokens_to_ids(
+                        "eng_Latn"
+                    ),
+                    do_sample=False,
+                    num_beams=1,
+                )
+
+            translations.extend(
+                self.tokenizer.batch_decode(
+                    outputs,
+                    skip_special_tokens=True,
+                )
             )
 
-        translation = self.tokenizer.batch_decode(
-            output,
-            skip_special_tokens=True,
-        )[0]
+        return [text.strip() for text in translations]
 
-        return translation.strip()
+    def translate(self, text, source_lang):
+        return self.translate_batch([text], source_lang)[0]
