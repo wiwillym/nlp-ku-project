@@ -1,0 +1,1606 @@
+-- GENAI LOGS ANTHROPIC CLAUDE --
+-- USED BY AMNA SOHAIB FBT902 -- 
+
+Q: ```notebook-python
+bio_labels_train = df_train_tokenised.apply(
+    lambda row: create_bio_labels(
+        row["answerable"],
+        row["context"],
+        row["context_tokens"],
+        row["context_offsets"],
+        row["answer_start"],
+        row["answer"],
+    ),
+    axis=1,
+)
+df_train_tokenised["bio_labels"], df_train_tokenised["bio_alignment"] = zip(*bio_labels_train)
+
+bio_labels_val = df_val_tokenised.apply(
+    lambda row: create_bio_labels(
+        row["answerable"],
+        row["context"],
+        row["context_tokens"],
+        row["context_offsets"],
+        row["answer_start"],
+        row["answer"],
+    ),
+    axis=1,
+)
+df_val_tokenised["bio_labels"], df_val_tokenised["bio_alignment"] = zip(*bio_labels_val)
+
+```
+
+why am i getting this error:
+
+```
+---------------------------------------------------------------------------
+
+```
+
+
+```
+KeyError                                  Traceback (most recent call last)
+
+```
+
+
+```
+/usr/local/lib/python3.13/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
+   3640         try:
+-> 3641             return self._engine.get_loc(casted_key)
+   3642         except KeyError as err:
+
+
+```
+
+
+```
+pandas/_libs/index.pyx in pandas._libs.index.IndexEngine.get_loc()
+
+
+```
+
+
+```
+pandas/_libs/index.pyx in pandas._libs.index.IndexEngine.get_loc()
+
+
+```
+
+
+```
+pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+
+
+```
+
+
+```
+pandas/_libs/hashtable_class_helper.pxi in pandas._libs.hashtable.PyObjectHashTable.get_item()
+
+
+```
+
+
+```
+KeyError: 'context_offsets'
+
+```
+
+
+```
+The above exception was the direct cause of the following exception:
+
+
+```
+
+
+```
+KeyError                                  Traceback (most recent call last)
+
+```
+
+8 frames
+
+```
+/usr/local/lib/python3.13/dist-packages/pandas/core/indexes/base.py in get_loc(self, key)
+   3646             ):
+   3647                 raise InvalidIndexError(key) from err
+-> 3648             raise KeyError(key) from err
+   3649         except TypeError:
+   3650             # If we have a listlike key, _check_indexing_error will raise
+
+
+```
+
+
+```
+KeyError: 'context_offsets'
+```
+
+A: The error means `df_train_tokenised` has no column called `context_offsets`. `create_bio_labels` expects it, but the dataframe you're running this on doesn't contain it. From what I can see, your Week 36 notebook only ever uses `question_tokens` and `context_tokens`, so I can't tell from it what the offsets column is actually called, or whether it exists at all.
+
+**Step 1: check what columns you actually have**
+
+```python
+print(df_train_tokenised.columns.tolist())
+```
+
+Look for anything offset-like, for example `context_offset_mapping`, `offset_mapping`, `context_char_offsets` or `offsets`.
+
+**Step 2: the likely causes, most probable first**
+
+1. **The column has a different name.** If Step 1 shows something similar, change `row["context_offsets"]` to that name in both `apply` calls (train and val). The same applies to `question_offsets` if it exists.
+2. **You're on an older version of `load_tokenised_data` or `src/`.** If a teammate added the offsets column to `src/data.py` in a recent commit, your Colab session may have an old clone. Run `git pull` in the repo, restart the Colab runtime (Runtime → Restart session), and re-run from the top. This is very common on Colab, since the VM and its cloned files reset between sessions.
+3. **The offsets are never returned by the loader.** If `load_tokenised_data()` only returns `context_tokens` and not offsets, then `create_bio_labels` needs a different input, or the loader needs to be updated. Check whether `create_bio_labels` is defined in `src/` and read its docstring or signature to see what it expects. That will tell you what the column should be called.
+
+**Step 3: if the column doesn't exist at all**
+
+Look at `src/data.py` (or wherever `load_tokenised_data` is defined) and check whether the tokenizer is called with offset mapping enabled (for Hugging Face tokenizers, `return_offsets_mapping=True`). If it isn't, the offsets were never computed and someone has to add that to the loader. Ask your teammate who wrote it.
+
+If you paste the output of Step 1 and the signature of `create_bio_labels`, I can tell you the exact fix.
+
+One more thing, so this doesn't get mixed up: this BIO labelling code is for the **sequence labelling** part of the project, not the Week 38 language modelling work you've been doing. It's fine to work on both, but keep them in separate notebooks. That way an error like this one can't get tangled up with your LM notebook.
+
+-------------------------------------------------------------------------------------------
+Q: ```python
+import os
+import stanza
+import pandas as pd
+from src.data import load_data, DATA_PATH
+
+LANGUAGES_TO_TOKENISE = ["ar", "ko", "te"]
+
+tokenisers = {
+    lang: stanza.Pipeline(
+        lang=lang,
+        processors="tokenize",
+        verbose=False,
+    )
+    for lang in LANGUAGES_TO_TOKENISE + ["en"]
+}
+
+
+def tokenise(text, lang):
+    doc = tokenisers[lang](text)
+
+    tokens = []
+    offsets = []
+
+    for sentence in doc.sentences:
+        for token in sentence.tokens:
+            tokens.append(token.text)
+            offsets.append((token.start_char, token.end_char))
+
+    return tokens, offsets
+
+
+def tokenise_context_and_answer(context, answer, lang):
+    context_tokens, context_offsets = tokenise(context, lang)
+    answer_tokens, _ = tokenise(answer, lang)
+    return context_tokens, context_offsets, answer_tokens
+
+
+def tokenise_dataset(df):
+    df = df[df["lang"].isin(LANGUAGES_TO_TOKENISE)]
+    tokenised_datasets = []
+
+    for lang in LANGUAGES_TO_TOKENISE:
+        print(f"Tokenising {lang} dataset...")
+
+        sub_df_by_lang = df[df["lang"] == lang].copy()
+
+        (
+            sub_df_by_lang["context_tokens"],
+            sub_df_by_lang["context_offsets"],
+            sub_df_by_lang["answer_tokens"],
+        ) = zip(
+            *sub_df_by_lang.apply(
+                lambda row: tokenise_context_and_answer(
+                    row["context"],
+                    row["answer"],
+                    "en",
+                ),
+                axis=1,
+            )
+        )
+
+        (
+            sub_df_by_lang["question_tokens"],
+            sub_df_by_lang["question_offsets"],
+        ) = zip(*sub_df_by_lang["question"].apply(lambda x: tokenise(x, lang)))
+
+        tokenised_datasets.append(sub_df_by_lang)
+
+    return pd.concat(tokenised_datasets, ignore_index=True)
+
+
+def tokenise_train_and_val():
+    df_train, df_val = load_data()
+    df_train_tokenised = tokenise_dataset(df_train)
+    df_val_tokenised = tokenise_dataset(df_val)
+    df_train_tokenised.to_parquet(
+        os.path.join(DATA_PATH, "train_tokenised.parquet"), index=False
+    )
+    df_val_tokenised.to_parquet(
+        os.path.join(DATA_PATH, "validation_tokenised.parquet"), index=False
+    )
+    return df_train_tokenised, df_val_tokenised
+
+```
+
+is data being translated to english here
+
+A: No, nothing is translated here. Stanza's `processors="tokenize"` only splits text into tokens, and the text stays in its original language.
+
+Each field gets a different tokeniser:
+
+| Field | Language pipeline | Why |
+|---|---|---|
+| `question` | its own language (`ar`/`ko`/`te`) | the questions are written in that language |
+| `context` | `"en"` | the contexts are English (you said so earlier) |
+| `answer` | `"en"` | the answers are English, matching the contexts |
+
+That's the reason the `tokenise_context_and_answer(..., "en")` call hard-codes `"en"` instead of passing `lang`. The `"en"` pipeline is there to tokenise English text, not to convert anything into English. The only translation in your project is the NLLB translator from Week 36, which is a separate step.
+
+## Two things this explains
+
+**1. Your `KeyError: 'context_offsets'`.** This script is what creates `context_offsets`, and it saves the result to `train_tokenised.parquet` and `validation_tokenised.parquet`. If `load_tokenised_data()` reads those files, your copy was probably generated by an older version of the script that didn't produce offsets. Pull the latest repo and get the current parquet files. If they aren't committed, re-run `tokenise_train_and_val()` (it's slow, so ask a teammate whether they can share theirs).
+
+**2. Why your Arabic vocabulary is sparse.** `token.text` gives Stanza's surface tokens, and Stanza doesn't split Arabic clitics or prefixes. That's why tokens like `بالرئيس` ("with the president") and `مامعنى` stay as one unit. Each inflected or attached form counts as its own type, so lots of words appear only once, which pushes your UNK rate up. In your report's tokenisation description, say it plainly: "word-level tokens from Stanza's tokenizer, with no morphological segmentation, no diacritic stripping and no normalization." That's also a good place to point when you discuss why the UNK rate is high.
+
+-------------------------------------------------------------------------------------------
+Q: ```
+ModuleNotFoundError                       Traceback (most recent call last)
+
+```
+
+
+```
+/tmp/ipykernel_6566/1294232762.py in <cell line: 0>()
+----> 1 import nb_setup
+      2 import torch
+      3 import random
+      4 import numpy as np
+      5 import pandas as pd
+
+
+```
+
+
+```
+ModuleNotFoundError: No module named 'nb_setup'
+
+```
+
+
+```
+
+```
+
+
+```
+---------------------------------------------------------------------------
+NOTE: If your import is failing due to a missing package, you can
+manually install dependencies using either !pip or !apt.
+
+To view examples of installing some common dependencies, click the
+"Open Examples" button below.
+```
+
+A: This means Python can't find a module called `nb_setup` anywhere on its path, and it's a different error pattern from your other notebooks. There, you used:
+
+```python
+from notebooks import nb_setup
+```
+
+Here it's:
+
+```python
+import nb_setup
+```
+
+That only works if `nb_setup.py` sits directly in your current working directory or already on the path, not inside a `notebooks` folder. A few likely causes, in order of likelihood:
+
+**1. This notebook isn't in the repo, or the repo isn't cloned in this session.** On Colab, each new runtime starts empty. If this is a fresh notebook you started outside your cloned repo folder, `nb_setup.py` (and `src/`) won't be reachable at all. Check:
+
+```python
+import os
+print(os.getcwd())
+print(os.listdir())
+```
+
+You want to see `src/`, `notebooks/`, etc. in that listing. If you don't, you're in the wrong directory, or the repo was never cloned/mounted in this session. If it's a fresh Colab runtime, you'll need to `git clone` it again or re-mount Drive, same as before.
+
+**2. The import line itself might just need correcting.** If the repo *is* here and `notebooks/nb_setup.py` exists, change the line to match what worked before:
+
+```python
+from notebooks import nb_setup
+```
+
+**3. Different notebook, different folder depth.** If this new notebook lives in a different subfolder of the repo than `3_inspection.ipynb` did (e.g. one level deeper), relative imports that worked there can fail here, since Python resolves `src`/`notebooks` relative to the current working directory, not the repo root.
+
+Can you run `os.getcwd()` and `os.listdir()` and tell me what comes back? That'll tell us which of these it is.
+
+-------------------------------------------------------------------------------------------
+Q:  Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+config.json: 100% 615/615 [00:00<00:00, 38.9kB/s]tokenizer_config.json: 100% 25.0/25.0 [00:00<00:00, 2.06kB/s]sentencepiece.bpe.model: 100% 5.07M/5.07M [00:00<00:00, 15.0MB/s]tokenizer.json: 100% 9.10M/9.10M [00:00<00:00, 27.7MB/s]---------------------------------------------------------------------------
+RuntimeError                              Traceback (most recent call last)
+/usr/local/lib/python3.13/dist-packages/transformers/utils/import_utils.py in __getattr__(self, name)
+   2559             try:
+-> 2560                 module = self._get_module(self._class_to_module[name])
+   2561                 value = getattr(module, name)
+
+29 frames/usr/local/lib/python3.13/dist-packages/transformers/utils/import_utils.py in _get_module(self, module_name)
+   2793         except Exception as e:
+-> 2794             raise e
+   2795 
+
+/usr/local/lib/python3.13/dist-packages/transformers/utils/import_utils.py in _get_module(self, module_name)
+   2791         try:
+-> 2792             return importlib.import_module("." + module_name, self.__name__)
+   2793         except Exception as e:
+
+/usr/lib/python3.13/importlib/__init__.py in import_module(name, package)
+     87             level += 1
+---> 88     return _bootstrap._gcd_import(name[level:], package, level)
+     89 
+
+/usr/lib/python3.13/importlib/_bootstrap.py in _gcd_import(name, package, level)
+
+/usr/lib/python3.13/importlib/_bootstrap.py in _find_and_load(name, import_)
+
+/usr/lib/python3.13/importlib/_bootstrap.py in _find_and_load_unlocked(name, import_)
+
+/usr/lib/python3.13/importlib/_bootstrap.py in _load_unlocked(spec)
+
+/usr/lib/python3.13/importlib/_bootstrap_external.py in exec_module(self, module)
+
+/usr/lib/python3.13/importlib/_bootstrap.py in _call_with_frames_removed(f, *args, **kwds)
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/xlm_roberta/modeling_xlm_roberta.py in <module>
+     32 from ...masking_utils import create_bidirectional_mask, create_causal_mask
+---> 33 from ...modeling_layers import GradientCheckpointingLayer
+     34 from ...modeling_outputs import (
+
+/usr/local/lib/python3.13/dist-packages/transformers/modeling_layers.py in <module>
+     35 )
+---> 36 from .modeling_utils import LoadStateDictConfig, PreTrainedModel, _get_resolved_checkpoint_files
+     37 from .models.auto import AutoModel
+
+/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py in <module>
+     88 from .integrations.sdpa_paged import sdpa_attention_paged_forward
+---> 89 from .loss.loss_utils import LOSS_MAPPING
+     90 from .modeling_flash_attention_utils import (
+
+/usr/local/lib/python3.13/dist-packages/transformers/loss/loss_utils.py in <module>
+     19 
+---> 20 from .loss_d_fine import DFineForObjectDetectionLoss
+     21 from .loss_deformable_detr import DeformableDetrForObjectDetectionLoss, DeformableDetrForSegmentationLoss
+
+/usr/local/lib/python3.13/dist-packages/transformers/loss/loss_d_fine.py in <module>
+     20 from ..utils import is_vision_available
+---> 21 from .loss_for_object_detection import box_iou
+     22 from .loss_rt_detr import RTDetrHungarianMatcher, RTDetrLoss
+
+/usr/local/lib/python3.13/dist-packages/transformers/loss/loss_for_object_detection.py in <module>
+     30 if is_vision_available():
+---> 31     from transformers.image_transforms import center_to_corners_format
+     32 
+
+/usr/local/lib/python3.13/dist-packages/transformers/image_transforms.py in <module>
+     21 
+---> 22 from .image_utils import (
+     23     ChannelDimension,
+
+/usr/local/lib/python3.13/dist-packages/transformers/image_utils.py in <module>
+     53 if is_torchvision_available():
+---> 54     from torchvision.io import ImageReadMode, decode_image
+     55     from torchvision.transforms import InterpolationMode
+
+/usr/local/lib/python3.13/dist-packages/torchvision/__init__.py in <module>
+      7 from . import extension  # usort:skip  # noqa: F401
+----> 8 from torchvision import _meta_registrations, datasets, io, models, ops, transforms, utils  # usort:skip
+      9 
+
+/usr/local/lib/python3.13/dist-packages/torchvision/_meta_registrations.py in <module>
+    162 
+--> 163 @torch.library.register_fake("torchvision::nms")
+    164 def meta_nms(dets, scores, iou_threshold):
+
+/usr/local/lib/python3.13/dist-packages/torch/library.py in register(func)
+   1270         use_lib = _library_for_registration(namespace, lib)
+-> 1271         use_lib._register_fake(
+   1272             op_name, func, _stacklevel=stacklevel + 1, allow_override=allow_override
+
+/usr/local/lib/python3.13/dist-packages/torch/library.py in _register_fake(self, op_name, fn, _stacklevel, allow_override)
+    353 
+--> 354         handle = entry.fake_impl.register(
+    355             func_to_register, source, lib=self, allow_override=allow_override
+
+/usr/local/lib/python3.13/dist-packages/torch/_library/fake_impl.py in register(self, func, source, lib, allow_override)
+     86         try:
+---> 87             lib.impl(self.qualname, meta_kernel, "Meta", allow_override=allow_override)
+     88         except Exception:
+
+/usr/local/lib/python3.13/dist-packages/torch/library.py in impl(self, op_name, fn, dispatch_key, with_keyset, allow_override)
+    495             # only for the base operators.
+--> 496             if torch._C._dispatch_has_kernel_for_dispatch_key(
+    497                 dispatcher_op_name, "CompositeImplicitAutograd"
+
+RuntimeError: operator torchvision::nms does not exist
+
+The above exception was the direct cause of the following exception:
+
+ModuleNotFoundError                       Traceback (most recent call last)
+/tmp/ipykernel_6566/2803080926.py in <cell line: 0>()
+      2 
+      3 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+----> 4 xlmr = AutoModel.from_pretrained(MODEL_NAME)
+      5 
+      6 pretrained_embeddings = (
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs)
+    355         has_remote_code = hasattr(config, "auto_map") and cls.__name__ in config.auto_map
+    356         has_local_code = type(config) in cls._model_mapping
+--> 357         explicit_local_code = has_local_code and not _get_model_class(
+    358             config, cls._model_mapping
+    359         ).__module__.startswith("transformers.")
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in _get_model_class(config, model_mapping)
+    177 
+    178 def _get_model_class(config, model_mapping):
+--> 179     supported_models = model_mapping[type(config)]
+    180     if not isinstance(supported_models, (list, tuple)):
+    181         return supported_models
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in __getitem__(self, key)
+    600         if model_type in self._model_mapping:
+    601             model_name = self._model_mapping[model_type]
+--> 602             return self._load_attr_from_module(model_type, model_name)
+    603 
+    604         # Maybe there was several model types associated with this config.
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in _load_attr_from_module(self, model_type, attr)
+    614         if module_name not in self._modules:
+    615             self._modules[module_name] = importlib.import_module(f".{module_name}", "transformers.models")
+--> 616         return getattribute_from_module(self._modules[module_name], attr)
+    617 
+    618     def keys(self) -> list[type[PreTrainedConfig]]:
+
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in getattribute_from_module(module, attr)
+    526     if isinstance(attr, dict):
+    527         return {k: getattribute_from_module(module, v) for k, v in attr.items()}
+--> 528     if hasattr(module, attr):
+    529         return getattr(module, attr)
+    530     # Some of the mappings have entries model_type -> object of another model type. In that case we try to grab the
+
+/usr/local/lib/python3.13/dist-packages/transformers/utils/import_utils.py in __getattr__(self, name)
+   2646                             ) from e
+   2647                 else:
+-> 2648                     raise ModuleNotFoundError(
+   2649                         f"Could not import module '{name}'. Are this object's requirements defined correctly?"
+   2650                     ) from e
+
+ModuleNotFoundError: Could not import module 'XLMRobertaModel'. Are this object's requirements defined correctly?
+
+---------------------------------------------------------------------------
+NOTE: If your import is failing due to a missing package, you can
+manually install dependencies using either !pip or !apt.
+
+To view examples of installing some common dependencies, click the
+"Open Examples" button below.
+---------------------------------------------------------------------------
+Open Examples
+
+MODEL_NAME = "xlm-roberta-base"
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+xlmr = AutoModel.from_pretrained(MODEL_NAME)
+
+pretrained_embeddings = (
+    xlmr
+    .get_input_embeddings()
+    .weight
+    .detach()
+    .cpu()
+    .clone()
+)
+
+A: This isn't a bug in your code — it's a broken environment. Look at the actual root cause, several frames down:
+
+```
+RuntimeError: operator torchvision::nms does not exist
+```
+
+That's `torch` and `torchvision` being mismatched versions. Colab's pre-installed versions sometimes drift out of sync, and here it broke while `transformers` was trying to import vision-related utilities as a side effect of loading `AutoModel`. The `ModuleNotFoundError: Could not import module 'XLMRobertaModel'` you see at the bottom is a *side effect* of that torchvision crash, not the actual problem; the traceback chain bottoms out in the torchvision line above.
+
+**The simplest fix for your case:** you only need the text model and tokenizer, not anything vision-related, so the cleanest fix is to just remove torchvision entirely rather than trying to version-match it:
+
+```python
+!pip uninstall -y torchvision
+```
+
+Then **restart the runtime** (Runtime → Restart session in Colab) and re-run your cells from the top, including the `transformers`/`torch` imports. With torchvision gone, `transformers` will skip the vision-import path that's crashing, and `AutoModel.from_pretrained` should load cleanly.
+
+**If that doesn't fix it**, the alternative is forcing matching versions instead:
+
+```python
+!pip install -U torch torchvision
+```
+
+then restart and retry. This is slightly riskier on Colab since it can pull in a torch build that doesn't match Colab's CUDA setup, so try the uninstall approach first since it's lower-risk for your actual use case.
+
+One more thing worth doing regardless: restart the runtime *before* re-running anything, since once a broken import like this partially executes, Python caches the broken module state in memory and re-running the same cell without restarting often won't actually re-trigger the fix even after you've uninstalled/reinstalled packages.
+
+-------------------------------------------------------------------------------------------
+Q: where do i put the uninstall cell?
+
+A: Put it as its own new cell, right before the cell that does the imports/loading (`MODEL_NAME = ...`, `AutoTokenizer`, `AutoModel`, etc.) — i.e., before any cell that has already run `import transformers` or `from transformers import ...` for the first time in this session.
+
+So the order should be:
+
+```python
+# Cell 1 (new) — run this first
+!pip uninstall -y torchvision
+```
+
+Then **restart the runtime** (Runtime → Restart session in Colab). This is required — just running the uninstall cell without restarting won't help, since `transformers`/`torch` may already be partially loaded in memory with the broken torchvision reference cached.
+
+After restarting, run your notebook from the top again, in order:
+
+```python
+# Cell 2 — your normal imports (transformers, torch, etc.)
+...
+
+# Cell 3 — this now hopefully works cleanly
+MODEL_NAME = "xlm-roberta-base"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+xlmr = AutoModel.from_pretrained(MODEL_NAME)
+...
+```
+
+Note: since Colab's runtime resets between sessions, the `!pip uninstall` won't "stick" permanently — if you start a fresh Colab session later (new runtime), torchvision will be back by default and you may need to run the uninstall cell again at the start of that session too. It's a session-scoped fix, not a permanent one.
+
+-------------------------------------------------------------------------------------------
+Q: give me all the data that is left and i need to perform in my notebook and where the cells should be
+
+A: Here's everything left, mapped onto your existing 22 cells, in the order you should add them.
+
+## 1. Security fix — cell 0, right now, not later
+
+Replace the hardcoded token before you do anything else:
+```python
+!git clone https://github.com/wiwillym/nlp-ku-project.git
+%cd nlp-ku-project
+```
+Authenticate separately (Colab secrets or a credential prompt), and revoke the exposed token on GitHub if you haven't already.
+
+## 2. Device fix — cell 4
+
+Replace the MPS-only check so Colab actually uses its GPU:
+```python
+device = torch.device(
+    "cuda" if torch.cuda.is_available()
+    else "mps" if torch.backends.mps.is_available()
+    else "cpu"
+)
+```
+
+## 3. Markdown: motivate representations & interaction — new cell, insert before cell 6 (before `train_logistic_regression`)
+
+A markdown cell covering:
+- Why BOW + overlap/length features for logistic regression (interpretable, each feature has a clear meaning)
+- Why XLM-R pretrained embeddings + GRU (multilingual pretraining handles ar/ko/te and English jointly; GRU gives sequential/contextual modelling the BOW model lacks)
+- How question and context interact in each model (e.g. are they concatenated, encoded separately then combined, or is it just the question? Check your `logistic_regression.py` / `gru_dataset.py` / `gru_model.py` source to describe this accurately rather than guessing)
+
+I can't tell you the actual interaction mechanism without seeing `src/answerability/logistic_regression.py`, `gru_dataset.py`, and `gru_model.py` — if you want this write-up accurate rather than generic, paste those three files and I'll write the real description.
+
+## 4. Week 36 baseline — new cell, insert between cell 13 (majority baseline) and cell 14 (XLM-R loading)
+
+Re-run your Week 36 rule-based classifier on this validation set and evaluate it the same way as the others:
+```python
+# from your Week 36 rule_based_classifier + translator
+rule_pred = df_val_tokenised.apply(
+    lambda row: rule_based_classifier(row["question"], row["context"], row["lang"], translator),
+    axis=1
+).astype(int).to_numpy()
+
+rule_results = evaluate_answerability_predictions(y_val, rule_pred, val_langs, "Rule-Based").round(4)
+rule_results
+```
+Then in cell 21, add it to the concat:
+```python
+all_results = pd.concat([majority_results, rule_results, lr_results, gru_results], ignore_index=True).round(4)
+all_results
+```
+
+## 5. Error analysis — new cells, after cell 20 (GRU predictions), before cell 21
+
+In order:
+```python
+errors_df = df_val_tokenised.copy()
+errors_df["true"] = y_val
+errors_df["pred"] = gru_pred
+errors_df["error_type"] = None
+errors_df.loc[(errors_df["true"] == 1) & (errors_df["pred"] == 0), "error_type"] = "false_negative"
+errors_df.loc[(errors_df["true"] == 0) & (errors_df["pred"] == 1), "error_type"] = "false_positive"
+errors_only = errors_df[errors_df["error_type"].notna()]
+
+pd.crosstab(errors_only["lang"], errors_only["error_type"])
+```
+— run this and look at it before continuing, since whether false positives dominate per-language or just overall changes how you write the next part.
+
+```python
+te_rows = df_val_tokenised[df_val_tokenised["lang"] == "te"]
+ar_rows = df_val_tokenised[df_val_tokenised["lang"] == "ar"]
+ko_rows = df_val_tokenised[df_val_tokenised["lang"] == "ko"]
+
+for name, rows in [("te", te_rows), ("ar", ar_rows), ("ko", ko_rows)]:
+    ratio = rows["question"].apply(lambda q: len(tokenizer.tokenize(q))) / rows["question_tokens"].apply(len)
+    print(name, ratio.describe())
+```
+— the tokenization-fragmentation check, to see if Telugu's error rate correlates with heavier subword splitting.
+
+```python
+sample = pd.concat([
+    errors_only[errors_only["lang"] == "te"].sample(6, random_state=42),
+    errors_only[errors_only["lang"] == "ar"].sample(min(3, (errors_only["lang"]=="ar").sum()), random_state=42),
+    errors_only[errors_only["lang"] == "ko"].sample(min(3, (errors_only["lang"]=="ko").sum()), random_state=42),
+])
+
+for _, row in sample.iterrows():
+    print(f"[{row['lang']} | {row['error_type']}]")
+    print("Q:", row["question"])
+    print("Context (truncated):", row["context"][:200])
+    print()
+```
+— read these by hand, then write a markdown cell naming your failure categories with counts, e.g.:
+```python
+category_counts = errors_only["category"].value_counts()  # after you manually label a `category` column
+category_counts
+```
+(You'll need to manually assign `category` per error based on what you actually observe — I can't invent real categories without seeing the examples.)
+
+## 6. Markdown: results discussion — new cell, after cell 21 (final `all_results` table)
+
+Compare all four models (majority, rule-based, LR, GRU) per language, referencing the crosstab and category counts from step 5, plus the tokenization-fragmentation evidence if it supports the Telugu hypothesis.
+
+## 7. Markdown: LM-score note — only if you decide to use it
+
+Spec says this is conditional ("if you use..."). Since you haven't used a Week 38 LM score as a feature, you can skip this entirely — just don't leave it unaddressed if a teammate or your report template expects a line on it; a one-sentence "we did not incorporate the Week 38 LM score as a feature for this model" is enough if the report structure expects the section to exist.
+
+---
+
+**What I need from you to finish steps 3 and 5 properly**: the three `src/answerability/*.py` files (logistic_regression, gru_dataset, gru_model), and once you've run the crosstab + sample + fragmentation check, the actual output so we can write the real category labels and discussion together instead of generic placeholders.
+
+-------------------------------------------------------------------------------------------
+Q: there are files in my github linked collab folder that i want to remove from collab, how do i do that without manually deleting them one by one
+
+A: Depends on exactly what you're removing — a whole folder, specific file types, or a scattered list — and whether you want them gone from GitHub too, or just gone from this Colab session. A few common cases:
+
+**Delete an entire folder and everything in it:**
+```python
+!rm -rf path/to/folder
+```
+
+**Delete all files matching a pattern** (e.g. all `.parquet` files, or everything under a `data/` subfolder):
+```python
+import glob, os
+for f in glob.glob("path/**/*.parquet", recursive=True):
+    os.remove(f)
+```
+
+**Delete a specific list of files you already know:**
+```python
+import os
+files_to_remove = ["path/to/file1.ipynb", "path/to/file2.csv"]
+for f in files_to_remove:
+    os.remove(f)
+```
+
+**Important distinction:** any of the above only removes files from this Colab session's local clone of the repo. It does **not** touch GitHub. If you re-clone the repo later (new Colab session), the deleted files come right back, because they're still in the GitHub repo.
+
+If you actually want them gone from the repo permanently, you need to also commit and push the deletion:
+```python
+!git rm -r path/to/folder  # or: git rm path/to/file1.ipynb path/to/file2.csv
+!git commit -m "Remove unneeded files"
+!git push
+```
+`git rm` stages the deletion the same way `git add` stages a new file — the commit + push is what makes it permanent on GitHub.
+
+Which situation is this — a specific folder, a file type across the repo, or a handful of named files? And do you want them gone from GitHub permanently, or just cleared out of this session?
+
+-------------------------------------------------------------------------------------------
+Q: this folder is not synced with github. there is one file i added but it is not showing here. what do i do without nesting the project again
+
+A: Depends on which direction the sync needs to go — did you add the file on GitHub (via the web interface) and it's missing from your Colab clone, or did you add it in Colab and it's missing from GitHub? Both are common, so here's how to check and fix each, without re-cloning.
+
+**First, check what's out of sync:**
+```python
+%cd /content/nlp-ku-project
+!git status
+!git fetch
+!git log HEAD..origin/main --oneline   # shows commits on GitHub you don't have locally yet
+```
+
+## If the file exists on GitHub but not in your local Colab folder
+
+Pull the latest changes into your existing clone — this won't nest anything, since `git pull` updates the folder in place rather than creating a new one:
+```python
+!git pull
+```
+If you get a conflict error because of local changes you don't care about, and you just want GitHub's version:
+```python
+!git fetch origin
+!git reset --hard origin/main
+```
+(Only do this if you're fine discarding any local uncommitted changes in this Colab session.)
+
+## If you added the file locally in Colab and it's missing from GitHub
+
+That means it was never committed and pushed. Check it's actually there and add it:
+```python
+!git status        # should list it under "Untracked files"
+!git add path/to/your/file
+!git commit -m "Add missing file"
+!git push
+```
+
+**Quickest way to tell which situation you're in:** run `!git status` first. If it shows your file as "untracked," you created it locally and need to push. If `git status` shows nothing but the file genuinely isn't in your `/content/nlp-ku-project` folder, it exists on GitHub and you need to pull.
+
+-------------------------------------------------------------------------------------------
+Q: ```
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+fatal: Unable to read current working directory: No such file or directory
+```
+
+A: This means the directory your shell was sitting in no longer exists — almost certainly because one of the earlier `rm -rf` commands deleted a folder while your notebook's working directory was pointed somewhere inside it (or inside a path that passed through it). The shell is stuck trying to operate from a location that's now gone.
+
+**Fix: explicitly move to a directory you know still exists, using an absolute path:**
+```python
+%cd /content
+```
+Then check your project folder is still intact:
+```python
+!ls /content/nlp-ku-project
+```
+
+**If that works and the project folder looks fine**, move into it the same way:
+```python
+%cd /content/nlp-ku-project
+!git status
+```
+
+**If `/content/nlp-ku-project` is also gone or broken** (possible if an `rm -rf` accidentally caught more than intended), check what's actually there:
+```python
+!ls /content
+```
+and tell me what shows up — that'll tell us whether the repo needs a fresh clone or whether it's just your shell's cwd that was stale, not the files themselves.
+
+**Going forward, to avoid this class of problem entirely:** restart the runtime (Runtime → Restart session) any time you've been doing manual folder surgery like this — it resets the shell's cwd cleanly and avoids these "ghost directory" states where Colab's shell is confused about where it is.
+
+-------------------------------------------------------------------------------------------
+Q: commands dont work. it says not linked to git when clearly when i do ctrl+s it says save to git
+
+A: These are two different systems, and that's probably the whole confusion — let me untangle them.
+
+**System 1 — Colab's built-in "Save to GitHub" (what Ctrl+S is doing).** When a notebook is opened via File → Open from GitHub (or saved via File → Save a copy in GitHub), Colab syncs just that one `.ipynb` file directly to a specific path in your repo, using its own GitHub connection. Ctrl+S triggers this. It has nothing to do with the `/content/nlp-ku-project` folder or the `!git` commands you've been running in cells — it doesn't know or care whether that folder exists, is broken, or even exists at all.
+
+**System 2 — the manual git clone and shell commands** (`!git clone`, `!git status`, `%cd`, etc.) you've been running in cells. This operates entirely on the cloned folder sitting in Colab's file system (`/content/nlp-ku-project`), completely separately from System 1.
+
+So: Ctrl+S successfully saving to GitHub tells you System 1 is fine. The "not linked to git" error is coming from System 2, and is almost certainly just the broken-cwd problem from before — the shell still doesn't know what directory it's in after the `rm -rf`.
+
+**Can you paste the exact error text you're seeing** when you say "it says not linked to git"? I want the literal output, since "not linked to git" isn't standard git phrasing — it might be:
+- the same `shell-init: error retrieving current directory` as before (meaning `%cd /content` wasn't actually run, or didn't fix it), or
+- something from `git status` like `fatal: not a git repository`, which would mean the shell landed somewhere outside the actual repo folder entirely.
+
+In the meantime, run this and tell me exactly what prints:
+```python
+!pwd
+!ls -la
+```
+
+-------------------------------------------------------------------------------------------
+Q: fatal: not a git repository (or any of the parent directories): .git
+
+/content
+total 20
+drwxr-xr-x 1 root root 4096 Oct  5 07:59 .
+drwxr-xr-x 1 root root 4096 Oct  5 07:38 ..
+drwxr-xr-x 4 root root 4096 Sep 16 13:26 .config
+drwxr-xr-x 7 root root 4096 Oct  5 10:37 nlp-ku-project
+drwxr-xr-x 1 root root 4096 Sep 16 13:26 sample_data
+
+A: That tells us exactly what's wrong: you're sitting in `/content`, which was never a git repo — your actual repo is one level down, in `/content/nlp-ku-project`. The `%cd /content` from my earlier fix got your shell unstuck, but it stopped one directory too early.
+
+```python
+%cd /content/nlp-ku-project
+!git status
+```
+
+That should now show a real git status instead of the "not a git repository" error. Run it and let me know what it says — if it's clean (or shows expected changes), you're back to normal and can go ahead with `!git pull` / `!git add` / `!git push` as before.
+
+-------------------------------------------------------------------------------------------
+Q: did git status. it worked. did git pull. it gave this:
+
+
+```
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/wiwillym/nlp-ku-project.git/'
+```
+
+A: Good — this confirms the earlier security fix worked (removing the hardcoded token from the clone URL), but now git has no credentials at all to authenticate with GitHub for `pull`/`push`. You need to give it a token again, just not hardcoded in plain text this time.
+
+## Step 1: generate a fresh token (if you haven't already revoked/replaced the exposed one)
+
+GitHub → Settings → Developer settings → Personal access tokens → Generate new token (classic is fine, with `repo` scope).
+
+## Step 2: store it in Colab's Secrets manager, not in a cell
+
+Click the **key icon** 🔑 in Colab's left sidebar → Add a new secret → name it `GH_TOKEN` → paste the token value → toggle "Notebook access" on.
+
+## Step 3: use it to authenticate, without ever printing or hardcoding it
+
+```python
+from google.colab import userdata
+import subprocess
+
+token = userdata.get('GH_TOKEN')
+
+!git remote set-url origin https://{token}@github.com/wiwillym/nlp-ku-project.git
+!git pull
+```
+
+This sets the remote URL with the token embedded only in memory for this session — it's not saved into any file, not visible in your notebook's cell output, and not committed anywhere. Each new Colab session, you'll need to re-run this (secrets don't auto-persist into the shell), but the token itself stays safely in Colab's secret storage rather than in your notebook text.
+
+**One more thing worth doing while you're at it:** set `git config` for commits too, if you haven't, so future commits have your identity attached:
+```python
+!git config user.email "your-email@example.com"
+!git config user.name "Amna"
+```
+
+Run the Step 3 block and let me know if `git pull` succeeds — if it still fails, double check the token has `repo` scope and that you copied it correctly into the secret (easy to accidentally include a trailing space).
+
+-------------------------------------------------------------------------------------------
+Q: ---------------------------------------------------------------------------
+FileNotFoundError                         Traceback (most recent call last)
+/tmp/ipykernel_3069/1964759973.py in <cell line: 0>()
+----> 1 from notebooks import nb_setup
+      2 import torch
+      3 import random
+      4 import numpy as np
+      5 import pandas as pd
+
+/content/nlp-ku-project/notebooks/nb_setup.py in <module>
+     11 
+     12 if not os.path.exists(DATA_PATH):
+---> 13     raise FileNotFoundError(
+     14         f"Data directory not found at {DATA_PATH}. Please ensure the data is placed in the correct location."
+     15     )
+
+FileNotFoundError: Data directory not found at /content/nlp-ku-project/data. Please ensure the data is placed in the correct location.
+
+A: This means `/content/nlp-ku-project/data` doesn't exist right now. Given everything that just happened (git pull, and especially if you ran the `git reset --hard origin/main` option from earlier), there are two likely causes.
+
+**Check first:**
+```python
+!ls /content/nlp-ku-project
+```
+See if `data` is missing entirely, or present but empty.
+
+## Most likely cause: `data/` is gitignored, and something wiped your local copy
+
+Check your `.gitignore`:
+```python
+!cat /content/nlp-ku-project/.gitignore
+```
+If `data/` (or similar) is listed there, that means the dataset was **never tracked by git in the first place** — it was probably placed into the folder manually (uploaded, downloaded via script, or copied from Drive) after cloning, in whatever session originally set this up. If you ran `git reset --hard origin/main` earlier while fixing the authentication issue, that command only resets *tracked* files — but if something in that sequence also did a fresh `git clone` or otherwise recreated the folder, an untracked `data/` directory wouldn't have survived, since it was never part of the repo to begin with.
+
+## What to do
+
+**If `data/` is gitignored:** you need to regenerate or re-obtain the data the same way it was originally set up — check `README.md` for instructions:
+```python
+!cat /content/nlp-ku-project/README.md
+```
+It likely says something like "download from X" or "run `python scripts/get_data.py`," or similar — or it was manually uploaded by a teammate and needs to be copied in again (e.g. from Google Drive, or by asking whoever set it up for the raw files).
+
+**If `data/` is NOT gitignored** (i.e. it should be tracked and committed), then something actually deleted it — check if it shows up in git history:
+```python
+!cd /content/nlp-ku-project && git log --all --full-history -- data/
+```
+If commits show up, you can restore it:
+```python
+!cd /content/nlp-ku-project && git checkout HEAD -- data/
+```
+
+Run the `.gitignore` check first and tell me what it shows — that tells us which of the two situations you're in.
+
+-------------------------------------------------------------------------------------------
+Q: ```notebook-python
+MODEL_NAME = "xlm-roberta-base"
+MAX_LENGTH = 384
+DOC_STRIDE = 128
+
+SAVE_PATH = "../checkpoints/integrated_qa_translated"
+RUN_TRAINING = False  # False: load a saved fine-tuned model and only evaluate
+
+if RUN_TRAINING:
+    model = AutoModelForQuestionAnswering.from_pretrained(
+        MODEL_NAME,
+        attn_implementation="eager",
+    )
+else:
+    model = AutoModelForQuestionAnswering.from_pretrained(
+        SAVE_PATH,
+        attn_implementation="eager",
+    )
+
+if RUN_TRAINING:
+    for param in model.roberta.parameters():
+        param.requires_grad = False
+
+    for layer in model.roberta.encoder.layer[-4:]:
+        for param in layer.parameters():
+            param.requires_grad = True
+
+    for param in model.qa_outputs.parameters():
+        param.requires_grad = True
+
+model = model.to(device)
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_NAME if RUN_TRAINING else SAVE_PATH,
+    use_fast=True,
+)
+
+if RUN_TRAINING:
+    train_features = build_qa_features(
+        df_train_translated,
+        tokenizer,
+        max_length=MAX_LENGTH,
+        doc_stride=DOC_STRIDE,
+    )
+
+validation_features = build_qa_features(
+    df_val_translated,
+    tokenizer,
+    max_length=MAX_LENGTH,
+    doc_stride=DOC_STRIDE,
+)
+
+if RUN_TRAINING:
+    train_dataset = QATrainDataset(train_features)
+
+    train_dl = DataLoader(
+        train_dataset,
+        collate_fn=train_collate_fn,
+        shuffle=True,
+        batch_size=4,
+    )
+
+```
+
+
+
+```
+---------------------------------------------------------------------------
+
+```
+
+
+```
+HFValidationError                         Traceback (most recent call last)
+
+```
+
+
+```
+/usr/local/lib/python3.13/dist-packages/transformers/utils/hub.py in cached_files(path_or_repo_id, filenames, cache_dir, force_download, proxies, token, revision, local_files_only, subfolder, repo_type, user_agent, _raise_exceptions_for_gated_repo, _raise_exceptions_for_missing_entries, _raise_exceptions_for_connection_errors, _commit_hash, tqdm_class, **deprecated_kwargs)
+    437             # This is slightly better for only 1 file
+--> 438             hf_hub_download(
+    439                 path_or_repo_id,
+
+
+```
+
+5 frames
+
+```
+/usr/local/lib/python3.13/dist-packages/huggingface_hub/utils/_validators.py in _inner_fn(*args, **kwargs)
+     83             if arg_name in ["repo_id", "from_id", "to_id"]:
+---> 84                 validate_repo_id(arg_value)
+     85 
+
+
+```
+
+
+```
+/usr/local/lib/python3.13/dist-packages/huggingface_hub/utils/_validators.py in validate_repo_id(repo_id)
+    131     if repo_id.count("/") > 1:
+--> 132         raise HFValidationError(
+    133             "Repo id must be in the form 'repo_name' or 'namespace/repo_name':"
+
+
+```
+
+
+```
+HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': './checkpoints/integrated_qa_translated'. Use `repo_type` argument if needed.
+
+```
+
+
+```
+The above exception was the direct cause of the following exception:
+
+
+```
+
+
+```
+OSError                                   Traceback (most recent call last)
+
+```
+
+
+```
+/tmp/ipykernel_1989/2444916779.py in <cell line: 0>()
+     12     )
+     13 else:
+---> 14     model = AutoModelForQuestionAnswering.from_pretrained(
+     15         SAVE_PATH,
+     16         attn_implementation="eager",
+
+
+```
+
+
+```
+/usr/local/lib/python3.13/dist-packages/transformers/models/auto/auto_factory.py in from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs)
+    285             if not isinstance(config, PreTrainedConfig):
+    286                 # We make a call to the config file first (which may be absent) to get the commit hash as soon as possible
+--> 287                 resolved_config_file = cached_file(
+    288                     pretrained_model_name_or_path,
+    289                     CONFIG_NAME,
+
+
+```
+
+
+````
+/usr/local/lib/python3.13/dist-packages/transformers/utils/hub.py in cached_file(path_or_repo_id, filename, **kwargs)
+    292     ```
+    293     """
+--> 294     file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+    295     file = file[0] if file is not None else file
+    296     return file
+
+
+````
+
+
+```
+/usr/local/lib/python3.13/dist-packages/transformers/utils/hub.py in cached_files(path_or_repo_id, filenames, cache_dir, force_download, proxies, token, revision, local_files_only, subfolder, repo_type, user_agent, _raise_exceptions_for_gated_repo, _raise_exceptions_for_missing_entries, _raise_exceptions_for_connection_errors, _commit_hash, tqdm_class, **deprecated_kwargs)
+    494             raise
+    495         elif isinstance(e, ValueError):
+--> 496             raise OSError(f"{e}") from e
+    497 
+    498         # Now we try to recover if we can find all files correctly in the cache
+
+
+```
+
+
+```
+OSError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': './checkpoints/integrated_qa_translated'. Use `repo_type` argument if needed.
+```
+
+A: The checkpoint folder isn't in this Colab session, so there's nothing to load. `RUN_TRAINING = False` tells the cell to load `SAVE_PATH`, and `from_pretrained` assumes any path that doesn't exist locally is a Hugging Face repo id. That's why the error talks about "Repo id" even though you gave a folder path.
+
+**1. Confirm the folder is missing**
+
+```python
+import os
+print(os.getcwd())
+print(os.path.exists(SAVE_PATH), os.path.abspath(SAVE_PATH))
+!ls checkpoints ../checkpoints 2>/dev/null
+```
+
+The traceback shows `./checkpoints/...` but your cell says `../checkpoints/...`, so you may be running a cell version that differs from what you pasted. Also, `..` is relative to whatever directory your last `%cd` left you in, which is easy to get wrong in Colab.
+
+**2. Fix it, depending on your situation**
+
+- **Someone already trained this model.** Checkpoints are almost always gitignored (check `.gitignore`), so it exists only on the machine or Colab session where it was trained. Get the whole folder from them via Google Drive. It needs `config.json`, `model.safetensors` and the tokenizer files, because the tokenizer is loaded from the same folder. Then mount Drive and point to it with an absolute path:
+  ```python
+  from google.colab import drive
+  drive.mount("/content/drive")
+  SAVE_PATH = "/content/drive/MyDrive/nlp-ku-project/checkpoints/integrated_qa_translated"
+  ```
+- **Nobody has trained it yet.** Set `RUN_TRAINING = True`. Make sure the training section ends with these lines, using a Drive path so the model survives Colab resets:
+  ```python
+  model.save_pretrained(SAVE_PATH)
+  tokenizer.save_pretrained(SAVE_PATH)
+  ```
+  After that, `RUN_TRAINING = False` works in later sessions.
+
+Use an absolute path in both cases, since a relative one breaks whenever the working directory changes.
+
+Is this your translated-questions extension, or a teammate's notebook? If it's a teammate's, ask them for the saved folder before you retrain, because retraining takes time you don't need to spend.
+
+-------------------------------------------------------------------------------------------
+Q: ```notebook-python
+import os
+print(os.getcwd())
+print(os.path.exists(SAVE_PATH), os.path.abspath(SAVE_PATH))
+!ls checkpoints ../checkpoints 2>/dev/null
+!ls checkpoints ./checkpoints 2>/dev/null
+
+```
+
+/content/nlp-ku-project
+False /content/checkpoints/integrated_qa_translated
+checkpoints:
+./checkpoints:
+
+checkpoints:
+
+A: That output shows two separate problems.
+
+**1. The path is wrong for Colab.** Your working directory is the repo root, `/content/nlp-ku-project`, so `../checkpoints/...` points to `/content/checkpoints/...`, which doesn't exist. The `../` was written for a notebook running from inside `notebooks/`, where it resolves to the repo's `checkpoints/` folder. In Colab you'd use `checkpoints/integrated_qa_translated` instead.
+
+**2. The repo's `checkpoints/` folder is empty.** The line `checkpoints:` with nothing after it shows the folder exists but has no model in it. The weights were never committed, which is normal because model files are too large for git. The trained model exists only on whoever trained it.
+
+Two quick checks will confirm that:
+
+```python
+!ls -la checkpoints
+!git check-ignore -v checkpoints/integrated_qa_translated
+```
+
+If the second command prints a `.gitignore` rule, the model was deliberately excluded from git.
+
+**What to do**
+
+- **If a teammate trained it:** ask them to upload the whole `integrated_qa_translated` folder to Google Drive (not just the weights file, since the tokenizer and `config.json` must be in it). Then:
+  ```python
+  from google.colab import drive
+  drive.mount("/content/drive")
+  !mkdir -p checkpoints
+  !cp -r "/content/drive/MyDrive/<path-to>/integrated_qa_translated" checkpoints/
+  SAVE_PATH = "checkpoints/integrated_qa_translated"
+  ```
+- **If nobody has trained it:** set `RUN_TRAINING = True`. At the end of training, save to Drive so the model survives a runtime reset:
+  ```python
+  SAVE_PATH = "/content/drive/MyDrive/nlp-ku-project/checkpoints/integrated_qa_translated"
+  model.save_pretrained(SAVE_PATH); tokenizer.save_pretrained(SAVE_PATH)
+  ```
+
+This notebook trains on translated questions (`df_train_translated`) and unfreezes only the last four encoder layers, which is a different setup from the joint model in my `7_integrated_qa.ipynb`. Whose extension is it? If it's a teammate's, ask them for the folder before you spend GPU time retraining. If it's yours, its evaluation has to use the same protocol as the core model.
+
+-------------------------------------------------------------------------------------------
+Q: total 8
+drwxr-xr-x 2 root root 4096 Oct 26 10:32 .
+drwxr-xr-x 9 root root 4096 Oct 26 10:32 ..
+.gitignore:224:checkpoints/	checkpoints/integrated_qa_translated
+
+A: That confirms it. The `checkpoints/` folder in your clone is empty because line 224 of `.gitignore` excludes it. That rule is deliberate and correct, since model weights are too large for git, so don't remove it. It means the trained model exists only where it was trained, and `git pull` will never bring it to you.
+
+You have two options:
+
+1. **Get the saved model from whoever trained it.** This is the faster route with the deadline on 30 October. They need to copy the whole `integrated_qa_translated` folder to Google Drive. It must contain `config.json`, `model.safetensors` and the tokenizer files, because the tokenizer is loaded from that folder too. You then copy it into your clone with the commands from my last message. A message you can send:
+
+   > Can you upload the whole `checkpoints/integrated_qa_translated` folder (weights, config and tokenizer files) to our shared Drive? It's gitignored, so I can't pull it from the repo. I need it to run the evaluation with `RUN_TRAINING = False`.
+
+2. **Retrain it yourself** with `RUN_TRAINING = True`. This is the fallback if nobody still has the files. Your cell freezes everything except the last four encoder layers and the QA head, and uses batch size 4, so it should be quicker than full fine-tuning. Still, save to Drive at the end of training. If the session resets before you save, you lose the run and have to train again.
+
+   Whichever option you take, the training notebook needs its own run record for the report: hardware, library versions, seed, training time and number of training examples.
+
+Has a teammate run this notebook before, or are you the first one to run it?
+
+-------------------------------------------------------------------------------------------
+
+Q: how to add page number
+
+A: With the ACL `final` option, page numbers are off. The `review` option adds them, but it also adds line numbers and anonymises authors, so don't use it for the final PDF.
+
+To keep `final` and add centred page numbers, put this in the preamble of [report/report.tex](report/report.tex) after `\usepackage[final]{acl}`:
+
+```latex
+\pagestyle{plain}
+```
+
+If that has no effect (the ACL style can reset the page style), use this instead:
+
+```latex
+\usepackage{fancyhdr}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0pt}}
+\pagestyle{plain}
+\AtBeginDocument{\thispagestyle{plain}}
+```
+
+The `\AtBeginDocument` line is there because the first page uses its own style. Without it, page 1 may stay unnumbered.
+
+The project description doesn't require page numbers. They help reviewers, though, and they don't take extra space. I haven't compiled either version here.
+
+
+-------------------------------------------------------------------------------------------
+Q: i need to work on the extension per member. which one should i do that you can help me with except for the english translation. my groupmate is going that.
+
+A: I'd pick **calibrated abstention**, meaning an alternative way of choosing the no-answer threshold. It's the best fit for what you've already built, for four reasons.
+
+- **It targets your main error.** The GRU has 40 Telugu false positives and only 0.57 unanswerable recall, with a fixed 0.5 cutoff and unweighted loss. Training is 3.3% unanswerable in Telugu against 24.2% in validation, so the score is probably miscalibrated for Telugu.
+- **It's cheap.** You can start on the existing GRU now, with no new training. It then carries over to the integrated QA model, whose null-minus-best-span score the spec says to threshold anyway.
+- **It's easy to make falsifiable.** For example: *per-language thresholds (or temperature scaling) will raise Telugu unanswerable recall and overall macro-F1 over the single 0.5 cutoff, with answerable recall dropping by less than 3 points.* You state it before running, then compare on the same examples.
+- **It doesn't overlap with your groupmate's translation extension.** Both can still run on the same core models.
+
+**One trap:** tuning thresholds on the validation set and then reporting on it is optimistic. Use cross-validation within validation, for example 5-fold stratified by language and label. Tune on four folds and score on the fifth. You can also report variation across folds, which the spec asks for. The challenge set must not be used for any tuning.
+
+**What I can build:**
+1. Export the GRU's validation probabilities to disk. `predict_answerability` already returns them, so this is a small change to the notebook.
+2. Add a calibration module with a global threshold sweep, per-language thresholds, and temperature scaling or Platt scaling.
+3. Add a cross-validated comparison that reuses your `evaluate_answerability_predictions`, plus a reliability table such as expected calibration error.
+4. Write the hypothesis, method and results paragraph for the report.
+
+Two alternatives are possible. **Zero-shot transfer** works because the raw data also has bn, fi, ja and ru, but it needs retraining and more compute. **An alternative question–context architecture**, for example cross-attention in place of the GRU, is more work and has a weaker link to your error analysis.
+
+Want me to start with step 1 and the threshold sweep?
+
+-------------------------------------------------------------------------------------------
+Q: also i pulled the week 40-41 done by my groupmate. can you explain what he did
+
+A: Your groupmate's work is `src/integrated_qa.py` plus `notebooks/7_integrated_multilingual_qa.ipynb`. It covers Weeks 40–41: a fine-tuned XLM-R question-answering model that predicts a span or "no answer".
+
+## What it does
+
+1. **Model.** `xlm-roberta-base` with a QA head (`AutoModelForQuestionAnswering`), trained as one joint model on Arabic, Korean and Telugu. The encoder is frozen except for the last 4 Transformer layers and the head.
+2. **Input.** Question and context are encoded as a pair, truncating only the context. It uses 384 tokens with a stride of 128, so long contexts become several windows.
+3. **Labels.** For each window, the start and end tokens are the answer's character offsets mapped to tokens. If the answer isn't in the window, or the question is unanswerable, both point to token 0 (`<s>`). Token 0 therefore means "no answer".
+4. **Training.** AdamW with learning rate 2e-5, weight decay 0.01 and 200 warmup steps. It runs 10 epochs at batch size 4, about 16k steps, on all training data, with seed 42. Loss falls from 2.92 to 0.65. The checkpoint is saved to `checkpoints/integrated_qa`.
+5. **Prediction.** For each question it takes the best span across windows, scored as start logit plus end logit, with spans of at most 30 tokens. The no-answer score is the null score minus the best-span score. The null score is the window's score on token 0, minimum over windows. If that score is above the threshold, the model outputs an empty answer.
+6. **Threshold.** It sweeps 100 values on the validation set and keeps the one with the best token F1, which is −5.90.
+
+## Results (validation, N=1155)
+
+| Metric | Value |
+|---|---|
+| SQuAD-v2 exact match | 0.490 |
+| SQuAD-v2 token F1 | 0.584 |
+| Answerability macro-F1, overall | 0.831 |
+| Answerability macro-F1, Arabic | 0.905 |
+| Answerability macro-F1, Korean | 0.821 |
+| Answerability macro-F1, Telugu | 0.767 |
+
+This matches the spec's Section 1: no-answer score, a validation-tuned threshold, and the stated side of the cutoff. Answerability is worse than your GRU (0.831 against 0.878), and Telugu is again the weakest language.
+
+## Still missing for Part 6
+
+- Exact match and token F1 per language. Only overall is printed.
+- The comparison with the Week 37 span labeller and the Week 39 classifiers.
+- At least 10 validation errors with a task-based taxonomy, covering all three languages.
+- A reproducibility record: hardware, training time, seeds. The report also needs to say that the encoder is only partly fine-tuned.
+
+## Why it helps your extension
+
+The `predictions` table already holds `no_answer_score` per example. Calibrated abstention can therefore run directly on this model with no retraining. The threshold is currently one global value tuned and scored on the same validation set. That is the leak I mentioned earlier, so cross-validating within validation is the fair comparison. Telugu at 0.767 is the obvious test case for a per-language threshold.
+
+I can build the extension on this table, starting with a per-language threshold sweep.
+
+-------------------------------------------------------------------------------------------
+Q: is this correct and done?
+
+A: Partly. The experiment is correct and finished, but the extension isn't done yet.
+
+**Correct:**
+- The threshold search matches a brute-force check, and the cross-validation never tunes and scores on the same examples.
+- Your Colab results are internally consistent. For example, the in-sample reference of 0.8478 matches the row computed from the same CSV.
+- My reading of the results is in my last message. The hypothesis was not supported at the size you set in advance.
+
+**Not done:**
+1. **Revoke the exposed GitHub token** and remove it from the notebook, before anything is committed or zipped.
+2. **Fill in the notebook's Interpretation cell.** It still has the placeholder text.
+3. **Write the extension section in the report** (hypothesis, method, result, caveats), plus the contribution-statement line saying you own this extension. I can draft this now.
+4. **Get your Colab notebook into the repo.** The repo copy of `8_calibrated_abstention.ipynb` is the pre-run version, without outputs. Yours has outputs and Colab-specific paths (`./data/...`), so the two differ. The `src/calibration.py` and notebook 7 export cell are also uncommitted. The groupmate's code needs to be on the same branch.
+5. **Record the reproducibility details:** Colab hardware, library versions, seeds (CV seed 42; the QA model's seed is 42 from notebook 7), and that the QA checkpoint comes from your groupmate's training.
+
+**Limits to state in the report:** one QA model with no training-seed variation, small Korean and Telugu unanswerable counts, and cross-validation repeats that reshuffle the same data. Also don't use the phrase "statistically significant", since no test was run.
+
+Do you want me to draft the report section and the Interpretation cell now?
+
+-------------------------------------------------------------------------------------------
+Q: i need to do the challenge.json part now, right? that is what is left for me. my team mate did theirs and i pulled that. please look into it and let me know what i need to do now. also this was said for the challenge part, does my teammates implementation follow this?
+
+In the Week 43-44 Paired Challenge Set, when you are asked to evaluate the models, you have to report the appropriate metric for each model, once for the answerable and once for the unanswerable set.
+You don't have to split the main results by language. You can just average across languages. In order to compare between languages you need to split the evaluation by language, but the full split results can go in the appendix.
+
+A: Still reading the remaining challenge cells in notebook 7. `-I` ignores the encoding variable, so I'll write the output to a file instead.
+
+Not quite. Your teammate's challenge set is valid but incomplete, and their evaluation doesn't follow the instruction you were given. I found these by running `validate_challenge.py` on the pulled file and reading `notebooks/7_…` and `notebooks/8_1_extension.ipynb`.
+
+## What your teammate did
+
+- **Challenge set:** [student_starter/challenge.json](student_starter/challenge.json) has 5 matched pairs (10 records), all with `created_by: "Guillermo Martinez"`. They are in Arabic, Korean and Telugu, from public sources (UNESCO, ESO, NASA, chile.travel). The validator passes. The pairs look good: each alteration is minimal and the question stays sensible, for example "oldest *artificial* mummies" versus "oldest *natural* mummies".
+- **Evaluation:** only the integrated XLM-R QA model, with and without translation. Both models use the threshold chosen on validation.
+- **Result:** both models answer all 5 unanswerable questions, so pairs with correct answerability are 0/5 and answerability macro-F1 is 0.33. The original model also gets one answerable span wrong (Fort San Antonio). The translation model gets all 5 answerable spans right.
+
+## Does it follow the instruction? No
+
+You were told to report the appropriate metric for each model, once for the answerable set and once for the unanswerable set, averaged across languages, with the per-language split in the appendix. Their notebook instead:
+- pools all 10 records and reports one EM, one token F1 and one macro-F1;
+- gives per-pair results rather than a separate answerable-set and unanswerable-set number;
+- covers only the QA model and its translation variant, though the spec lists more.
+
+Macro-F1 on 10 mixed records also means little. The metrics that fit each set are:
+- **Answerable set:** EM, token F1, and answerable recall (not abstained).
+- **Unanswerable set:** correct-abstention rate. For a span labeller, that is the share of empty predictions.
+
+## What you still need to do
+
+1. **Write your own 5 pairs (10 records).** The spec requires exactly five matched pairs from each member, so I can't do this part for you. Use `created_by` with your name, one public `source_url` per pair, and the same context in both records. `answer_start` must be the exact character index. For each pair, the unanswerable question should be a small edit that makes abstention hard, as in your teammate's set.
+2. **Check Zarin's pairs.** The set needs all three members' records, 30 in total. Only 10 exist, and the validator passes because it only counts per creator.
+3. **Freeze the models, then evaluate every one on the full set, answerable and unanswerable separately.** This includes the rule, the best Week 39 classifier (GRU), the Week 37 span labeller, the QA model and each extension. For your extension, use the frozen per-language thresholds from all of validation (Arabic −1.97, Korean 0.98, Telugu −5.41) and compare them with the global −2.03. The challenge set must not feed back into any tuning.
+4. **Report the aggregated numbers in the main text and the per-language split in the appendix.** Write the failure discussion the spec asks for: language, minimal alteration, extraction, or abstention. The shared finding so far is that the QA models never abstain, because the context stays on topic.
+5. **Check that the models can be reloaded.** The GRU's best weights were only kept in memory in notebook 6, and I saw no saved GRU or logistic-regression/span-labeller artefacts in the repo. You may have to retrain with seed 42, and results can differ slightly.
+
+I can write a shared evaluation function that takes any model's predictions and returns the answerable-set and unanswerable-set metrics, overall and per language. I can also write a small helper that builds your pairs, computes `answer_start` automatically and runs the validator. I can brainstorm pair ideas with you, but the pairs themselves must be yours. Which should I start with?
+
+-------------------------------------------------------------------------------------------
+Q: i ran the code of my teammate on colab but two files in the checkpoints folder were so huge that they didnt download. it gave an error. what do i do now
+
+A: You don't need to download them. Run the evaluation in the same Colab session where the checkpoints already exist, or move them through Google Drive.
+
+**1. Easiest: stay in that Colab runtime.**
+- The checkpoints sit on Colab's disk at `/content/nlp-ku-project/checkpoints/`, because the training notebook saved them there.
+- Open `8_calibrated_abstention.ipynb` in the same session and run the challenge cells. They read `checkpoints/integrated_qa` directly, so nothing needs downloading.
+- Don't disconnect or restart the runtime first. Disk files are lost when it resets.
+
+**2. Save them to Google Drive, to keep them or share them.** Run this in a Colab cell:
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+```
+
+```bash
+cp -r /content/nlp-ku-project/checkpoints /content/drive/MyDrive/nlp_checkpoints
+```
+
+Drive copies large files without the browser limit. Afterwards you can share the Drive folder with your team and copy it into any later session.
+
+**3. If you need to reduce what you move.** The two huge files are almost certainly `model.safetensors` and `best_state_dict.pt`, each about 1.1 GB. They hold the same weights. You only need `model.safetensors`, plus `config.json` and the tokenizer files. You can skip `best_state_dict.pt`. The evaluation loads the model with `from_pretrained`, which reads `model.safetensors`.
+
+One check: if you ran your teammate's *training* cell in Colab, you retrained the model. Its results can differ from what your teammate reported. Print the validation EM and token F1 again and use your own numbers, or ask your teammate for their checkpoint so the whole group uses the same one.
+
+-------------------------------------------------------------------------------------------
+Q: do i need the trained values for my  paired challenge set?
+
+A: Yes, but only for the models that learn from data. Which ones depend on what you evaluate.
+
+**For your calibrated-abstention extension you need two matching things:**
+1. **The trained QA checkpoint** (`checkpoints/integrated_qa`). The challenge questions have to be scored by the model itself, so there's no shortcut.
+2. **The validation scores from that same model**, in `data/qa_val_predictions.csv`. Your thresholds (global and per-language) were fitted on those scores.
+
+They must come from the same model. If you retrained the QA model in Colab, its scores differ from the old CSV, and the old thresholds (for example Telugu −5.41) no longer fit. In that case:
+- rerun the export cell at the end of notebook 7 to rewrite the CSV;
+- rerun notebook 8 from the top, so the cross-validation results and thresholds are recomputed;
+- then run the challenge cells.
+
+If you use your teammate's original checkpoint, the existing CSV and your reported numbers stay valid.
+
+**Not needed from training:**
+- The rule baseline has no training. It only needs the NLLB translator.
+- The thresholds themselves are just numbers. They come from the CSV, or you can type in the printed values (−2.032 global, and ar −1.967, ko 0.975, te −5.413).
+
+**Retrained inside notebook 9:** the logistic regression, GRU and span labeller. They retrain there automatically. The only requirement is the training data in `data/`.
+
+The challenge set itself is never trained on. It only needs the frozen models and thresholds.
+
+-------------------------------------------------------------------------------------------
+Q: do i need the files in integrated qa or integrated qa translated
+
+A: `integrated_qa` is the one you need for your calibrated-abstention extension. It's the original QA model, the one the validation score CSV and your thresholds came from.
+
+`integrated_qa_translated` belongs to your teammate's translation extension. Their model was trained on questions translated to English, so it doesn't need your thresholds. You only need it if you run `9_challenge_evaluation.ipynb` to get the translation row for the comparison table, and then your teammate could provide that row instead.
+
+**Files to copy.** If space or upload time is tight, you only need these from `integrated_qa`:
+
+- `model.safetensors`
+- `config.json`
+- the tokenizer files (`tokenizer.json`, `tokenizer_config.json`, `sentencepiece.bpe.model`, `special_tokens_map.json`)
+
+You can skip `best_state_dict.pt`, the duplicate set of weights that is one of the two huge files.
+
+-------------------------------------------------------------------------------------------
+Q: ```
+{'QA, core threshold (-5.895)': -5.89539, 'QA, global macro-F1 threshold': -2.0320434, 'QA, per-language thresholds (extension)': {'ar': -1.96731735, 'ko': 0.9747961249999999, 'te': -5.4129687}}
+
+```
+
+
+```
+---------------------------------------------------------------------------
+
+```
+
+
+```
+SafetensorError                           Traceback (most recent call last)
+
+```
+
+
+```
+/tmp/ipykernel_6168/379867136.py in <cell line: 0>()
+      9 
+     10 tokenizer = AutoTokenizer.from_pretrained(QA_PATH, use_fast=True)
+---> 11 qa_model = AutoModelForQuestionAnswering.from_pretrained(QA_PATH, attn_implementation="eager").to(device)
+     12 challenge_scores = get_span_scores(qa_model, tokenizer, challenge_df, device)
+     13 langs = challenge_df["lang"].tolist()
+
+
+```
+
+2 frames
+
+```
+/usr/local/lib/python3.13/dist-packages/transformers/modeling_utils.py in _load_pretrained_model(model, state_dict, checkpoint_files, load_config, expected_keys)
+   4442                     else:
+   4443                         backend, device = "mmap", "cpu"
+-> 4444                     file_pointer = safe_open(file, framework="pt", device=device, backend=backend)
+   4445                     all_pointer.add(file_pointer)
+   4446                     for k in file_pointer.keys():
+
+
+```
+
+
+```
+SafetensorError: Error while deserializing header: incomplete metadata, file not fully covered
+```
+
+A: The thresholds printed correctly (−5.895, −2.032, and ar/ko/te −1.967/0.975/−5.413), so the setup works. The failure is the checkpoint file: `model.safetensors` is **incomplete**, which is what "incomplete metadata, file not fully covered" means. The copy or upload was cut off, probably the same large file that failed to download earlier. A truncated file can't be loaded.
+
+**1. Check the file size.** The full file should be about 1.1 GB (about 1,110,000,000 bytes). Run this in a Colab cell:
+
+```bash
+ls -l /content/nlp-ku-project/checkpoints/integrated_qa
+```
+
+If `model.safetensors` is much smaller, it's the broken copy.
+
+**2. Get a complete copy.**
+- **Original runtime still alive:** run the challenge cells in the Colab session where the model was trained or saved. The file there is complete.
+- **Via Drive:** from the session that has the good file, mount Drive and copy it:
+
+```bash
+cp /content/nlp-ku-project/checkpoints/integrated_qa/model.safetensors /content/drive/MyDrive/nlp_checkpoints/
+```
+
+Then copy it from Drive into `checkpoints/integrated_qa/` in the session you're evaluating in. Confirm the size matches before loading.
+- **Large copy hangs:** wait for Drive to finish syncing, since large files can look present while still uploading.
+
+**3. Check the two copies are identical.** Run this on both and compare:
+
+```bash
+md5sum checkpoints/integrated_qa/model.safetensors
+```
+
+**4. If you can't recover the file,** ask your teammate to re-save and share it, or retrain. Retraining means redoing the validation scores and thresholds as I described earlier, so prefer getting the file.
+
+Once the size matches, rerun the failing cell. Nothing else in the notebook needs changing.
+
+-------------------------------------------------------------------------------------------
+Q: total 1894736
+-rw-r--r-- 1 root root  862978048 Oct 26 17:16 best_state_dict.pt
+-rw-r--r-- 1 root root        757 Oct 26 17:04 config.json
+-rw-r--r-- 1 root root 1060110336 Oct 26 17:16 model.safetensors
+-rw-r--r-- 1 root root        343 Oct 26 17:04 tokenizer_config.json
+-rw-r--r-- 1 root root   17098351 Oct 26 17:04 tokenizer.json
+-rw-r--r-- 1 root root        299 Oct 26 17:04 training_history.csv
+
+A: This folder is truncated, so the file is not just misread. The checkpoint was cut off while it was being written or copied.
+
+**What the listing shows**
+- `model.safetensors` is 1,060,110,336 bytes. XLM-R-base with a QA head has 277.45M float32 parameters, so the complete file should be about **1,109,900,000 bytes**. This one is about 50 MB short, which matches the "file not fully covered" error.
+- `best_state_dict.pt` is also short. It should be about 1.11 GB and is 863 MB.
+- Both weight files carry the same 17:16 timestamp, while the config and tokenizer are from 17:04. That points to the write stopping partway, or a copy that hadn't finished.
+- This folder also has `training_history.csv`, which only the *translated* model's training cell writes. It may be `integrated_qa_translated`, not the `integrated_qa` folder you need. Run the same `ls -l` on `integrated_qa` and check.
+
+**What to do now**
+1. Check whether it's still copying. Run `ls -l` twice, a minute apart. If the sizes grow, wait.
+2. Check disk space. Run `df -h /content`. A full disk gives exactly this kind of cut-off file.
+3. If the sizes are stable and short, the file is broken for good. Fix one of these:
+   - **Runtime still holds the model in memory** (the variable `model` from the training notebook): free disk space, then run `model.save_pretrained("../checkpoints/integrated_qa")` again.
+   - **Original run lives in another session or on your teammate's machine:** get their complete copy, or re-save it there. Then check that the size is about 1.11 GB before loading.
+   - **No good copy exists:** retraining is the last resort, and it means redoing the validation scores and thresholds as I described.
+
+Whichever file you end up with, verify its size before running the failing cell again. The loading code itself is fine.
+
+-------------------------------------------------------------------------------------------
+Q: how do i display the results in the notebook
+
+A: Each table cell already displays when it is the last line of a cell, which is how `challenge_main` and the score table appeared. To get a readable summary of the whole run, add these cells at the end of the notebook.
+
+**1. Per-record view, one row per question, with gold answer, prediction and correctness**
+
+```python
+view = challenge_df[["pair_id", "lang", "answerable", "question", "answer"]].copy()
+view["prediction"] = challenge_results["QA, per-language thresholds (extension)"]["prediction"].values
+view["no_answer_score"] = challenge_scores["no_answer_score"].round(2)
+view["correct"] = (view["prediction"] != "") == view["answerable"]
+view.sort_values(["pair_id", "answerable"], ascending=[True, False]).reset_index(drop=True)
+```
+
+**2. Pair view: answerable and unanswerable side by side**
+
+```python
+pairs = view.pivot(index="pair_id", columns="answerable", values=["prediction", "no_answer_score", "correct"])
+pairs.columns = [f"{a}_{'answerable' if b else 'unanswerable'}" for a, b in pairs.columns]
+pairs["score_gap (unans - ans)"] = (pairs["no_answer_score_unanswerable"] - pairs["no_answer_score_answerable"]).round(2)
+pairs
+```
+
+A positive gap means the model correctly finds the altered question harder to answer. A negative gap means it does not.
+
+**3. Scores against the thresholds, as a plot**
+
+```python
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(8, 4))
+for answerable, marker, label in [(True, "o", "answerable"), (False, "x", "unanswerable")]:
+    d = view[view["answerable"] == answerable]
+    ax.scatter(d["no_answer_score"], d["pair_id"], marker=marker, label=label)
+for name, t in THRESHOLDS.items():
+    if not isinstance(t, dict):
+        ax.axvline(t, linestyle="--", linewidth=1)
+ax.set_xlabel("no-answer score (higher = more likely unanswerable)")
+ax.legend()
+plt.tight_layout()
+plt.show()
+```
+
+The plot makes the main finding visible: all points sit far to the left of the threshold lines, so nothing is abstained. Save the plot with `fig.savefig("../data/challenge_scores.png", dpi=200)` if you want it in the report. The report is short on space, so use a plot only if it earns its place.
+
+**Formatting the main table.** For a cleaner look, display it with fixed decimals:
+
+```python
+challenge_main.set_index("model").style.format("{:.3f}")
+```
+
+-------------------------------------------------------------------------------------------
+Q: how much of week 39 is left
+
+A: I can't give you an exact checklist. The repo has no Week 39 spec, and I don't have the project description text in front of me. My reading is that Week 39 is the learned answerability classifier, which is [notebook 6](notebooks/6_learned_answerability.ipynb). That's the XLM-R-embedding GRU, which reached 0.878 macro-F1 (the number [notebook 8](notebooks/8_calibrated_abstention.ipynb) compares against). The coding side looks finished. What's left is on the report side.
+
+- **Report text:** the Week 39 results need to be written up properly. You have the merged answerability table and the 40-of-45 false-positive analysis, but the GRU discussion is the part the feedback flagged.
+- **Error analysis:** you need at least 10 manually inspected errors, grouped into categories with counts. The counts are still `\todo` placeholders.
+- **Reproducibility details:** hardware, library versions, seeds and training times are all still TODO.
+- **Compiling:** I never compiled `report/report.tex`, because there's no TeX on this machine. I also can't find a `report/` folder in this checkout, so check where that file lives on your side.
+
+If you paste the Week 39 section of the project description, I'll turn it into an exact done/not-done list.
+
+-------------------------------------------------------------------------------------------
+Q: -uploaded the project description file-
+
+A: Against the Week 39 section of the spec, most of it is done and one item is open.
+
+| Requirement | Status |
+|---|---|
+| Interpretable learned baseline (logistic regression) | Done, in notebook 6 |
+| Recurrent classifier with pretrained representations (XLM-R embeddings into a GRU, 0.878 macro-F1) | Done |
+| Evaluate both under the shared protocol and compare with the Week 36 baselines | Done. The merged answerability table in the report does this. |
+| Motivate the representations and how question and context interact | Written in report rewrite, but check it once more against your actual design. |
+| Manually inspect at least ten validation errors (false positives and false negatives, all three languages), with categories, counts and examples | **Open.** The error-analysis table in the report still has TODO counts. |
+| If the Week 38 LM score is used as a feature, explain why it should be informative | Done if you used it. The report notes that the -0.68 UNK–perplexity correlation was unigram-only, so word that carefully. |
+
+The open item is the error analysis. To close it:
+1. Pull at least 10 misclassified validation examples from notebook 6, including both false positives and false negatives from Arabic, Korean and Telugu. Ideally take more than 10, around 20 to 30.
+2. Label each one with a failure type. The categories should be task-motivated, such as topically related but missing the asked fact, a different entity type, a numeric or date mismatch, or a question word the model over-relies on.
+3. Count the examples per category and pick one representative example for each.
+4. Put the counts into the report's TODO table.
+
+I can write a notebook cell that samples balanced errors by language and error type and prints them with the question and context for you to label. Then I'll fill in the table from your labels. Want me to do that?
+
+Separately, `report/report.tex` isn't in this checkout. Please tell me where it lives, because I'll need it to fill in the table.
