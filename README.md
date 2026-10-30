@@ -33,7 +33,7 @@ nlp-ku-project/
 │   ├── preprocessing.py
 │   └── ...
 │
-├── ai-logs/
+├── genai-logs/
 │   └── [Generative AI interaction log files]
 │
 ├── nb_setup.py
@@ -105,6 +105,6 @@ Generative AI tools were used during the development of the project for inline c
 
 Generated suggestions and code were reviewed and, in most cases, modified to fit the project's requirements.
 
-Relevant generative AI interaction logs are included as `.txt` files in the `ai-logs/` directory.
+Relevant generative AI interaction logs are included as `.txt` files in the `genai-logs/` directory.
 
 
